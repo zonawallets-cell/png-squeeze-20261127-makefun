@@ -870,7 +870,7 @@ function evaluateBlock(res, litLen, distLen) {
 
 const BLOCK_BYTES = 262144;
 const CHAIN_CAP = 128;
-const PARSE_PASSES = 2;
+const PARSE_PASSES = 1; // round 2: 1 pass (2nd pass cost ~2x time for ~+0.7% score)
 
 // Full zlib stream of `data` with the optimal-parsing encoder. The cost
 // model is iterated whole-image at a time: each pass re-parses every block
@@ -946,8 +946,9 @@ function compressImage(rgba) {
     filterImage(best.form.samples, best.form.bpp, strat, raw);
     refined.push({ form: best.form, strategy: String(strat), raw, z: deflateSync(raw, Z6).length + chunkOverhead(best.form) });
   }
-  // If a second form is close, brute-force it too.
-  if (screened.length > 1 && screened[1].z < best.z * 1.08) {
+  // If a second form is close, brute-force it too. (Round 2: disabled for
+  // wall budget — the second form never won on any practice instance.)
+  if (false && screened.length > 1 && screened[1].z < best.z * 1.08) {
     const f2 = screened[1];
     const size2 = H * (W * f2.form.bpp + 1);
     const raw2 = new Uint8Array(size2);
@@ -974,7 +975,10 @@ function compressImage(rgba) {
     if (bestOut === null || zb < bestOut.bytes) {
       bestOut = { png: pngOfForm(r.form, z9), bytes: zb, form: r.form.name, strategy: r.strategy, encoder: 'zlib9' };
     }
-    if (r === top) {
+    // Round-2 speed fix: the optimal-parsing encoder only wins over zlib-9
+    // on brute-filtered data (rich/grey); on unfiltered data zlib-9's deep
+    // chains win, so skip the expensive optimal encode there.
+    if (r === top && r.strategy === 'brute') {
       const mine = deflateOptimal(r.raw);
       const mb = mine.length + chunkOverhead(r.form) + 57;
       if (mb < bestOut.bytes) {
